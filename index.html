@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="H&Y Boutique">
 <meta name="theme-color" content="#2b2320">
-<title>Hilaire &amp; Yvette — Boutique Shop Manager</title>
+<title>Hilaire &amp; Yvette Boutique — Shop Manager</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Karla:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -203,7 +203,7 @@ canvas{max-width:100%}
     <div class="brand">
       <div class="brand-mark">H·Y</div>
       <div>
-        <div class="brand-name">Hilaire &amp; Yvette</div>
+        <div class="brand-name">Hilaire &amp; Yvette Boutique</div>
         <div class="brand-sub">Boutique Shop Manager</div>
       </div>
     </div>
@@ -234,7 +234,7 @@ canvas{max-width:100%}
   <div class="login-card">
     <div class="login-header">
       <div class="login-mark">H·Y</div>
-      <div class="login-name">Hilaire &amp; Yvette</div>
+      <div class="login-name">Hilaire &amp; Yvette Boutique</div>
       <div class="login-sub">Boutique Shop</div>
     </div>
     <div id="login-forms">
@@ -274,7 +274,7 @@ canvas{max-width:100%}
   <div class="app-head">
     <div class="ah-mark">H·Y</div>
     <div>
-      <div class="ah-title">Hilaire &amp; Yvette</div>
+      <div class="ah-title">Hilaire &amp; Yvette Boutique</div>
       <div class="ah-meta" id="ah-meta"></div>
     </div>
     <div class="ah-right">
@@ -769,9 +769,32 @@ async function saveBatch(){
   let name=v('mb-name');
   if(!date)return toast('Enter the date.',1);
   if(!name)name=autoBatchName(origin,date);
+  // If a different batch already exists with this same date + origin, merge into it
+  const twin=D.batches.find(b=>b.date===date&&bOrigin(b)===origin&&b.id!==batchEditId);
+  if(twin){
+    if(batchEditId){
+      if(!confirm('A batch for '+origin+' — '+fmtD(date)+' already exists. Merge this batch into it? Items and trip expenses will be combined and the expense share recalculated.'))return;
+      await mergeBatches(batchEditId,twin.id);
+      closeModal('m-batch');toast('Batches merged ✓ — expenses now shared across all pieces');return;
+    }else{
+      closeModal('m-batch');toast('That batch already exists — items with this date join it automatically.');return;
+    }
+  }
   if(batchEditId)await db.collection('batches').doc(batchEditId).update({name,date,origin});
   else await db.collection('batches').add({name,date,origin,expenses:[],createdAt:Date.now(),by:U.name});
   closeModal('m-batch');toast('Batch saved ✓');
+}
+// Move everything from batch `fromId` into batch `intoId`, then delete `fromId`
+async function mergeBatches(fromId,intoId){
+  const from=getBatch(fromId),into=getBatch(intoId);
+  if(!from||!into)return;
+  const batchWrites=db.batch();
+  D.items.filter(i=>i.batchId===fromId).forEach(i=>batchWrites.update(db.collection('items').doc(i.id),{batchId:intoId}));
+  D.sales.filter(s=>s.batchId===fromId).forEach(s=>batchWrites.update(db.collection('sales').doc(s.id),{batchId:intoId}));
+  const expenses=[...(into.expenses||[]),...(from.expenses||[])];
+  batchWrites.update(db.collection('batches').doc(intoId),{expenses});
+  batchWrites.delete(db.collection('batches').doc(fromId));
+  await batchWrites.commit();
 }
 function findBatchByDate(date,origin){return D.batches.find(b=>b.date===date&&bOrigin(b)===origin);}
 async function delBatch(id){
@@ -810,8 +833,15 @@ function miBatchSync(){
   const hint=document.getElementById('mi-batch-hint');
   if(itemBatchId){const b=getBatch(itemBatchId);hint.textContent='Batch: '+(b?b.name:'');renderItemTicket();return;}
   const b=findBatchByDate(v('mi-date'),v('mi-origin'));
-  if(b)hint.textContent='✓ Joins existing batch “'+b.name+'” — its trip expenses will be shared with this item.';
-  else hint.textContent='A new batch will be created for this date.';
+  if(itemEditId){
+    const cur=getItem(itemEditId);
+    if(b&&cur&&b.id===cur.batchId)hint.textContent='Batch: '+b.name;
+    else if(b)hint.textContent='↪ This item will MOVE to batch “'+b.name+'” and share its trip expenses.';
+    else hint.textContent='↪ This item will move to a new batch created for this date.';
+  }else{
+    if(b)hint.textContent='✓ Joins existing batch “'+b.name+'” — its trip expenses will be shared with this item.';
+    else hint.textContent='A new batch will be created for this date.';
+  }
   renderItemTicket();
 }
 function openItemModal(batchId,itemId){
@@ -823,8 +853,7 @@ function openItemModal(batchId,itemId){
   ['mi-date','mi-origin'].forEach(i=>document.getElementById(i).disabled=lock);
   if(itemId){
     const it=getItem(itemId);const b=getBatch(it.batchId);
-    itemBatchId=it.batchId;
-    ['mi-date','mi-origin'].forEach(i=>document.getElementById(i).disabled=true);
+    itemBatchId=null; // date & origin stay editable — changing them moves the item to another batch
     document.getElementById('mi-date').value=b?b.date:'';
     document.getElementById('mi-origin').value=bOrigin(b);
     document.getElementById('mi-name').value=it.name;sel.value=it.type;
@@ -852,7 +881,7 @@ function renderItemTicket(){
   // expense share preview from the batch this item will join
   const b=itemBatchId?getBatch(itemBatchId):findBatchByDate(v('mi-date'),v('mi-origin'));
   let units=b?batchUnits(b):0;
-  if(itemEditId){const old=getItem(itemEditId);units-=Number(old.qty)||0;}
+  if(itemEditId&&b){const old=getItem(itemEditId);if(old&&old.batchId===b.id)units-=Number(old.qty)||0;}
   units+=qty;
   const expR=b?batchExpRWF(b):0;
   const share=units>0?expR/units:0;
@@ -870,7 +899,7 @@ async function saveItem(){
   const taxAmt=num('mi-tax'),taxCur=v('mi-taxcur'),salePrice=num('mi-sale');
   if(!name||!qty||!unitTZS)return toast('Fill in name, quantity and unit price.',1);
   // resolve the batch from the date (the batch identity)
-  if(!itemBatchId&&!itemEditId){
+  if(!itemBatchId){
     const date=v('mi-date'),origin=v('mi-origin');
     if(!date)return toast('Choose the date you bought it.',1);
     let b=findBatchByDate(date,origin);
@@ -883,7 +912,20 @@ async function saveItem(){
   if(itemEditId){
     const sold=soldQty(itemEditId);
     if(qty<sold)return toast(`You already sold ${sold} of this item — quantity can't be less.`,1);
-    await db.collection('items').doc(itemEditId).update({name,type,qty,unitTZS,taxAmt,taxCur,salePrice});
+    const cur=getItem(itemEditId);
+    const moved=cur&&cur.batchId!==itemBatchId;
+    await db.collection('items').doc(itemEditId).update({name,type,qty,unitTZS,taxAmt,taxCur,salePrice,batchId:itemBatchId});
+    if(moved){
+      const bw=db.batch();
+      D.sales.filter(s=>s.itemId===itemEditId).forEach(s=>bw.update(db.collection('sales').doc(s.id),{batchId:itemBatchId}));
+      await bw.commit();
+      // clean up the old batch if it is now empty with no expenses
+      const oldB=getBatch(cur.batchId);
+      if(oldB&&!D.items.some(i=>i.batchId===oldB.id&&i.id!==itemEditId)&&!(oldB.expenses||[]).length){
+        await db.collection('batches').doc(oldB.id).delete();
+      }
+      closeModal('m-item');toast('Item moved to its correct batch ✓');return;
+    }
   }else{
     await db.collection('items').add({batchId:itemBatchId,name,type,qty,unitTZS,taxAmt,taxCur,salePrice,createdAt:Date.now(),by:U.name});
   }
