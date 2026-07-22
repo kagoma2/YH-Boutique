@@ -286,8 +286,8 @@ canvas{max-width:100%}
   <div class="tab-nav" id="tab-nav">
     <div class="atab on" data-p="dashboard">Dashboard</div>
     <div class="atab" data-p="sell">Sell</div>
-    <div class="atab" data-p="stock">Stock</div>
-    <div class="atab" data-p="batches">Tanzania Trips</div>
+    <div class="atab" data-p="stock">Inventory</div>
+    <div class="atab" data-p="batches">Trips / Buying</div>
     <div class="atab" data-p="expenses">Shop Expenses</div>
     <div class="atab" data-p="reports">Reports</div>
     <div class="atab" data-p="users">Team<span class="dot" id="dot-users"></span></div>
@@ -335,8 +335,8 @@ canvas{max-width:100%}
 
     <!-- STOCK -->
     <div class="panel" id="p-stock">
-      <div class="ptitle serif">Stock</div>
-      <div class="psub">Everything currently in the shop, with true cost per piece (price + tax + trip share).</div>
+      <div class="ptitle serif">Inventory</div>
+      <div class="psub">Everything currently in the shop, with the gross cost per piece (unit price + tax + trip expense share).</div>
       <div class="stats" id="stock-stats"></div>
       <div class="card">
         <div class="filters">
@@ -350,9 +350,12 @@ canvas{max-width:100%}
 
     <!-- BATCHES -->
     <div class="panel" id="p-batches">
-      <div class="ptitle serif">Tanzania Trips</div>
-      <div class="psub">One batch = one buying trip. Add trip expenses and clothes; the app splits expenses across every piece automatically.</div>
-      <button class="btn btn-gold btn-block" style="margin-bottom:14px" onclick="openBatchModal()">＋ New trip / batch</button>
+      <div class="ptitle serif">Buying Trips</div>
+      <div class="psub">The <b>date</b> is the batch identity: every item you save with the same date and origin (Tanzania or China) goes into the same batch, and trip money is divided across all of them automatically. All amounts are in Rwandan Francs (RWF).</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn btn-gold" style="flex:1" onclick="openItemModal()">＋ Add clothes bought</button>
+        <button class="btn btn-p" style="flex:1" onclick="openBexp()">＋ Trip expense</button>
+      </div>
       <div id="batch-list"></div>
     </div>
 
@@ -432,14 +435,6 @@ canvas{max-width:100%}
         <div class="filters"><div class="fl" style="flex:2"><label>New category</label><input id="new-cat" placeholder="e.g. Wi-Fi"></div><div class="fl" style="flex:0"><label>&nbsp;</label><button class="btn btn-p" onclick="addCat()">Add</button></div></div>
       </div>
       <div class="card">
-        <h3>Default exchange rate</h3>
-        <div class="filters">
-          <div class="fl"><label>1,000 TZS =</label><input type="number" id="set-rate" inputmode="decimal" placeholder="e.g. 550"></div>
-          <div class="fl" style="flex:0"><label>&nbsp;</label><button class="btn btn-p" onclick="saveRate()">Save</button></div>
-        </div>
-        <p class="mini-note">Used as the starting rate when you create a new trip. Each trip keeps its own rate, so old batches never change.</p>
-      </div>
-      <div class="card">
         <h3>Device</h3>
         <button class="btn btn-s" onclick="reconfigure()">Disconnect Firebase from this device</button>
       </div>
@@ -451,12 +446,12 @@ canvas{max-width:100%}
 <!-- ===== MODALS ===== -->
 <div class="modal-bg" id="m-batch">
   <div class="modal">
-    <h2 class="serif" id="mb-title">New trip<span class="close" onclick="closeModal('m-batch')">×</span></h2>
-    <div class="fl"><label>Trip name</label><input id="mb-name" placeholder="e.g. Mwanza — March 2026"></div>
+    <h2 class="serif" id="mb-title">New batch<span class="close" onclick="closeModal('m-batch')">×</span></h2>
     <div class="row2">
-      <div class="fl"><label>Date</label><input type="date" id="mb-date"></div>
-      <div class="fl"><label>1,000 TZS = ? RWF</label><input type="number" id="mb-rate" inputmode="decimal" placeholder="550"></div>
+      <div class="fl"><label>Where did you buy?</label><select id="mb-origin"><option>Tanzania</option><option>China</option><option>Other</option></select></div>
+      <div class="fl"><label>Date — the batch identity</label><input type="date" id="mb-date"></div>
     </div>
+    <div class="fl"><label>Batch name (optional — filled automatically)</label><input id="mb-name" placeholder="e.g. Tanzania — 12 Mar 2026"></div>
     <button class="btn btn-gold btn-block" onclick="saveBatch()">Save trip</button>
   </div>
 </div>
@@ -464,11 +459,11 @@ canvas{max-width:100%}
 <div class="modal-bg" id="m-bexp">
   <div class="modal">
     <h2 class="serif">Trip expense<span class="close" onclick="closeModal('m-bexp')">×</span></h2>
+    <div class="fl" id="be-batch-wrap"><label>Which trip / batch?</label><select id="be-batch" onchange="beCurOpts()"></select></div>
     <div class="fl"><label>What was it?</label><input id="be-label" placeholder="e.g. Bus Kigali–Mwanza, boat cargo, hotel, food…"></div>
-    <div class="row2">
-      <div class="fl"><label>Amount</label><input type="number" id="be-amt" inputmode="decimal" placeholder="0"></div>
-      <div class="fl"><label>Currency</label><select id="be-cur"><option value="RWF">RWF</option><option value="TZS">TZS</option></select></div>
-    </div>
+    <div class="fl"><label>Amount (RWF)</label><input type="number" id="be-amt" inputmode="numeric" placeholder="0"></div>
+    <input type="hidden" id="be-cur" value="RWF">
+    <p class="hint" style="margin:-4px 0 10px">This money is split equally between every piece of clothing with the same batch date.</p>
     <button class="btn btn-gold btn-block" onclick="saveBatchExp()">Add expense</button>
   </div>
 </div>
@@ -476,15 +471,20 @@ canvas{max-width:100%}
 <div class="modal-bg" id="m-item">
   <div class="modal">
     <h2 class="serif" id="mi-title">Add clothes<span class="close" onclick="closeModal('m-item')">×</span></h2>
+    <div class="row2">
+      <div class="fl"><label>Date bought — batch identity</label><input type="date" id="mi-date" onchange="miBatchSync()"></div>
+      <div class="fl"><label>Where?</label><select id="mi-origin" onchange="miBatchSync()"><option>Tanzania</option><option>China</option><option>Other</option></select></div>
+    </div>
+    <p class="hint" id="mi-batch-hint" style="margin:-6px 0 12px"></p>
     <div class="fl"><label>Item name</label><input id="mi-name" placeholder="e.g. White beaded mini dress"></div>
     <div class="row2">
       <div class="fl"><label>Type</label><select id="mi-type"></select></div>
       <div class="fl"><label>Quantity (pieces)</label><input type="number" id="mi-qty" inputmode="numeric" placeholder="0"></div>
     </div>
-    <div class="row3">
-      <div class="fl"><label>Unit price (TZS)</label><input type="number" id="mi-price" inputmode="decimal" placeholder="0"></div>
-      <div class="fl"><label>Tax per piece</label><input type="number" id="mi-tax" inputmode="decimal" placeholder="0"></div>
-      <div class="fl"><label>Tax currency</label><select id="mi-taxcur"><option value="TZS">TZS</option><option value="RWF">RWF</option></select></div>
+    <div class="row2">
+      <div class="fl"><label>Unit price (RWF)</label><input type="number" id="mi-price" inputmode="numeric" placeholder="0"></div>
+      <div class="fl"><label>Tax per piece (RWF)</label><input type="number" id="mi-tax" inputmode="numeric" placeholder="0"></div>
+      <input type="hidden" id="mi-taxcur" value="RWF">
     </div>
     <div class="fl"><label>Target selling price in Rwanda (RWF, optional)</label><input type="number" id="mi-sale" inputmode="numeric" placeholder="0"></div>
     <div class="tag-ticket" id="mi-ticket"></div>
@@ -534,7 +534,7 @@ const YH_CFG = {
 const DFLT_TYPES=['Dress','Skirt','Blouse / Top','Shirt','Trousers','Jeans','Suit','Igitenge / Kitenge','Shoes','Bag','Underwear','Kids clothes','Bedsheets','Other'];
 const DFLT_CATS=['Rent','Electricity (Umuriro)','Water (Amazi)','Isuku / Cleaning','Umutekano / Security','Shopkeeper food','Transport','Salary','Airtime & Internet','Taxes & Licenses','Repairs','Other'];
 const DFLT_KEEPER_PERMS={dashboard:1,sell:1,stock:1,expenses:1,batches:0,reports:0,costs:0};
-const PERM_LABELS={dashboard:'See the dashboard',sell:'Sell items',stock:'See the stock list',expenses:'Record shop expenses',batches:'Open Tanzania trips (buying costs)',reports:'See reports',costs:'See costs & profit numbers'};
+const PERM_LABELS={dashboard:'See the dashboard',sell:'Sell items',stock:'See the stock list',expenses:'Record shop expenses',batches:'Open buying trips (Tanzania / China costs)',reports:'See reports',costs:'See costs & profit numbers'};
 
 let db,auth,app;
 let U={user:null,role:null,name:null};
@@ -570,22 +570,27 @@ function closeModal(id){document.getElementById(id).classList.remove('on');}
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('on');}));
 
 /* ---------- MONEY MATH (the heart of the app) ---------- */
-// batch.rate = RWF per 1,000 TZS.  tzs→rwf:  tzs * rate / 1000
-const tz2rw=(tzs,rate)=>Number(tzs||0)*Number(rate||0)/1000;
+// Each batch has a buying currency (TZS for Tanzania, USD/CNY for China) and rw = RWF per 1 unit.
+// Old batches stored rate = RWF per 1,000 TZS — still supported.
+// All money in the app is in Rwandan Francs (RWF).
+const rwOf=b=>1;
+const fx2rw=(amt,b)=>Number(amt||0);
+const bCur=b=>'RWF';
+const bOrigin=b=>(b&&b.origin)||'Tanzania';
 function batchItems(b){return D.items.filter(i=>i.batchId===b.id);}
-function batchExpRWF(b){return (b.expenses||[]).reduce((s,e)=>s+(e.cur==='TZS'?tz2rw(e.amount,b.rate):Number(e.amount)||0),0);}
+function batchExpRWF(b){return (b.expenses||[]).reduce((s,e)=>s+(e.cur!=='RWF'?fx2rw(e.amount,b):Number(e.amount)||0),0);}
 function batchUnits(b){return batchItems(b).reduce((s,i)=>s+(Number(i.qty)||0),0);}
 function batchShare(b){const u=batchUnits(b);return u>0?batchExpRWF(b)/u:0;}
 // landed cost per piece in RWF = unit price + tax + expense share
 function landedCost(item){
   const b=getBatch(item.batchId);if(!b)return 0;
-  const unit=tz2rw(item.unitTZS,b.rate);
-  const tax=item.taxCur==='TZS'?tz2rw(item.taxAmt,b.rate):Number(item.taxAmt)||0;
+  const unit=fx2rw(item.unitTZS,b);
+  const tax=item.taxCur!=='RWF'?fx2rw(item.taxAmt,b):Number(item.taxAmt)||0;
   return unit+tax+batchShare(b);
 }
 function soldQty(itemId){return D.sales.filter(s=>s.itemId===itemId).reduce((s,x)=>s+(Number(x.qty)||0),0);}
 function remaining(item){return (Number(item.qty)||0)-soldQty(item.id);}
-function batchGoodsRWF(b){return batchItems(b).reduce((s,i)=>{const unit=tz2rw(i.unitTZS,b.rate);const tax=i.taxCur==='TZS'?tz2rw(i.taxAmt,b.rate):Number(i.taxAmt)||0;return s+(unit+tax)*(Number(i.qty)||0);},0);}
+function batchGoodsRWF(b){return batchItems(b).reduce((s,i)=>{const unit=fx2rw(i.unitTZS,b);const tax=i.taxCur!=='RWF'?fx2rw(i.taxAmt,b):Number(i.taxAmt)||0;return s+(unit+tax)*(Number(i.qty)||0);},0);}
 
 /* ---------- SETUP / CONFIG ---------- */
 function saveConfig(){
@@ -744,20 +749,31 @@ function updateDots(){
 async function saveSettings(){await db.collection('settings').doc('main').set(D.settings,{merge:true});}
 
 /* ---------- BATCHES ---------- */
+function autoBatchName(origin,date){return origin+' — '+fmtD(date);}
 function openBatchModal(id){
   batchEditId=id||null;
-  document.getElementById('mb-title').firstChild.textContent=id?'Edit trip':'New trip';
-  if(id){const b=getBatch(id);document.getElementById('mb-name').value=b.name;document.getElementById('mb-date').value=b.date||'';document.getElementById('mb-rate').value=b.rate;}
-  else{document.getElementById('mb-name').value='';document.getElementById('mb-date').value=today();document.getElementById('mb-rate').value=D.settings.rate||'';}
+  document.getElementById('mb-title').firstChild.textContent=id?'Edit batch':'New batch';
+  if(id){const b=getBatch(id);
+    document.getElementById('mb-name').value=b.name||'';
+    document.getElementById('mb-date').value=b.date||'';
+    document.getElementById('mb-origin').value=bOrigin(b);
+  }else{
+    document.getElementById('mb-name').value='';
+    document.getElementById('mb-date').value=today();
+    document.getElementById('mb-origin').value='Tanzania';
+  }
   openModal('m-batch');
 }
 async function saveBatch(){
-  const name=v('mb-name'),date=v('mb-date'),rate=num('mb-rate');
-  if(!name||!rate)return toast('Give the trip a name and the exchange rate.',1);
-  if(batchEditId)await db.collection('batches').doc(batchEditId).update({name,date,rate});
-  else await db.collection('batches').add({name,date,rate,expenses:[],createdAt:Date.now(),by:U.name});
-  closeModal('m-batch');toast('Trip saved ✓');
+  const date=v('mb-date'),origin=v('mb-origin');
+  let name=v('mb-name');
+  if(!date)return toast('Enter the date.',1);
+  if(!name)name=autoBatchName(origin,date);
+  if(batchEditId)await db.collection('batches').doc(batchEditId).update({name,date,origin});
+  else await db.collection('batches').add({name,date,origin,expenses:[],createdAt:Date.now(),by:U.name});
+  closeModal('m-batch');toast('Batch saved ✓');
 }
+function findBatchByDate(date,origin){return D.batches.find(b=>b.date===date&&bOrigin(b)===origin);}
 async function delBatch(id){
   if(!isOwner())return;
   if(batchItems({id}).length)return toast('Delete the items in this trip first.',1);
@@ -765,11 +781,21 @@ async function delBatch(id){
 }
 function toggleBatch(id){openBatches[id]=!openBatches[id];renderBatches();}
 
-function openBexp(batchId){bexpBatchId=batchId;document.getElementById('be-label').value='';document.getElementById('be-amt').value='';openModal('m-bexp');}
+function openBexp(batchId){
+  bexpBatchId=batchId||null;
+  const wrap=document.getElementById('be-batch-wrap'),sel=document.getElementById('be-batch');
+  if(!D.batches.length&&!batchId){toast('First add clothes — a batch is created from the date.',1);return;}
+  sel.innerHTML=D.batches.map(b=>`<option value="${b.id}">${esc(b.name)} · ${fmtD(b.date)}</option>`).join('');
+  if(batchId){sel.value=batchId;wrap.style.display='none';}else wrap.style.display='';
+  beCurOpts();
+  document.getElementById('be-label').value='';document.getElementById('be-amt').value='';
+  openModal('m-bexp');
+}
+function beCurOpts(){}
 async function saveBatchExp(){
   const label=v('be-label'),amount=num('be-amt'),cur=v('be-cur');
   if(!label||!amount)return toast('Fill in the expense name and amount.',1);
-  const b=getBatch(bexpBatchId);if(!b)return;
+  const b=getBatch(bexpBatchId||v('be-batch'));if(!b)return;
   const expenses=[...(b.expenses||[]),{label,amount,cur,id:Date.now()}];
   await db.collection('batches').doc(b.id).update({expenses});
   closeModal('m-bexp');toast('Expense added ✓');
@@ -780,49 +806,80 @@ async function delBatchExp(batchId,eid){
   await db.collection('batches').doc(batchId).update({expenses});
 }
 
+function miBatchSync(){
+  const hint=document.getElementById('mi-batch-hint');
+  if(itemBatchId){const b=getBatch(itemBatchId);hint.textContent='Batch: '+(b?b.name:'');renderItemTicket();return;}
+  const b=findBatchByDate(v('mi-date'),v('mi-origin'));
+  if(b)hint.textContent='✓ Joins existing batch “'+b.name+'” — its trip expenses will be shared with this item.';
+  else hint.textContent='A new batch will be created for this date.';
+  renderItemTicket();
+}
 function openItemModal(batchId,itemId){
-  itemBatchId=batchId;itemEditId=itemId||null;
+  itemBatchId=batchId||null;itemEditId=itemId||null;
   document.getElementById('mi-title').firstChild.textContent=itemId?'Edit item':'Add clothes';
   const sel=document.getElementById('mi-type');
   sel.innerHTML=allTypes().map(t=>`<option>${esc(t)}</option>`).join('');
+  const lock=!!batchId;
+  ['mi-date','mi-origin'].forEach(i=>document.getElementById(i).disabled=lock);
   if(itemId){
-    const it=getItem(itemId);
+    const it=getItem(itemId);const b=getBatch(it.batchId);
+    itemBatchId=it.batchId;
+    ['mi-date','mi-origin'].forEach(i=>document.getElementById(i).disabled=true);
+    document.getElementById('mi-date').value=b?b.date:'';
+    document.getElementById('mi-origin').value=bOrigin(b);
     document.getElementById('mi-name').value=it.name;sel.value=it.type;
     document.getElementById('mi-qty').value=it.qty;document.getElementById('mi-price').value=it.unitTZS;
-    document.getElementById('mi-tax').value=it.taxAmt||'';document.getElementById('mi-taxcur').value=it.taxCur||'TZS';
+    document.getElementById('mi-tax').value=it.taxAmt||'';
     document.getElementById('mi-sale').value=it.salePrice||'';
   }else{
     ['mi-name','mi-qty','mi-price','mi-tax','mi-sale'].forEach(i=>document.getElementById(i).value='');
-    document.getElementById('mi-taxcur').value='TZS';
+    if(batchId){
+      const b=getBatch(batchId);
+      document.getElementById('mi-date').value=b?b.date:today();
+      document.getElementById('mi-origin').value=bOrigin(b);
+    }else{
+      document.getElementById('mi-date').value=today();
+      document.getElementById('mi-origin').value='Tanzania';
+    }
   }
-  renderItemTicket();
+  miBatchSync();
   ['mi-qty','mi-price','mi-tax','mi-taxcur','mi-sale'].forEach(i=>document.getElementById(i).oninput=renderItemTicket);
   openModal('m-item');
 }
 function renderItemTicket(){
-  const b=getBatch(itemBatchId);const el=document.getElementById('mi-ticket');
-  if(!b){el.innerHTML='';return;}
-  const qty=num('mi-qty'),price=num('mi-price'),tax=num('mi-tax'),taxCur=v('mi-taxcur'),sale=num('mi-sale');
-  const unit=tz2rw(price,b.rate);
-  const taxR=taxCur==='TZS'?tz2rw(tax,b.rate):tax;
-  // expense share preview: current expenses / (current units, minus this item's old qty if editing, plus new qty)
-  let units=batchUnits(b);
+  const el=document.getElementById('mi-ticket');
+  const qty=num('mi-qty'),price=num('mi-price'),tax=num('mi-tax'),sale=num('mi-sale');
+  // expense share preview from the batch this item will join
+  const b=itemBatchId?getBatch(itemBatchId):findBatchByDate(v('mi-date'),v('mi-origin'));
+  let units=b?batchUnits(b):0;
   if(itemEditId){const old=getItem(itemEditId);units-=Number(old.qty)||0;}
   units+=qty;
-  const share=units>0?batchExpRWF(b)/units:0;
-  const cost=unit+taxR+share;
+  const expR=b?batchExpRWF(b):0;
+  const share=units>0?expR/units:0;
+  const cost=price+tax+share;
   el.innerHTML=`
-    <div class="tt-row"><span>Price per piece (${fmt(price)} TZS)</span><b>${fmt(unit)} RWF</b></div>
-    <div class="tt-row"><span>Tax per piece</span><b>${fmt(taxR)} RWF</b></div>
-    <div class="tt-row"><span>Trip expense share</span><b>≈ ${fmt(share)} RWF</b></div>
-    <div class="tt-total"><span>Real cost per piece</span><span>≈ ${fmt(cost)} RWF</span></div>
+    <div class="tt-row"><span>Unit price per piece</span><b>${fmt(price)} RWF</b></div>
+    <div class="tt-row"><span>Tax per piece</span><b>${fmt(tax)} RWF</b></div>
+    <div class="tt-row"><span>Trip expense share <span class="mini-note">(${fmt(expR)} ÷ ${fmt(units)} pcs)</span></span><b>≈ ${fmt(share)} RWF</b></div>
+    <div class="tt-total"><span>Gross cost per piece</span><span>≈ ${fmt(cost)} RWF</span></div>
     ${sale?`<div class="tt-row" style="margin-top:5px"><span>If sold at ${fmt(sale)} RWF</span><b class="${sale-cost>=0?'pos':'neg'}">${sale-cost>=0?'+':''}${fmt(sale-cost)} profit/pc</b></div>`:''}
-    <div class="tt-row" style="opacity:.7"><span>Rate: 1,000 TZS = ${fmt(b.rate)} RWF · share updates as the trip changes</span></div>`;
+    <div class="tt-row" style="opacity:.7"><span>The share updates automatically as you add more clothes or trip money to this date.</span></div>`;
 }
 async function saveItem(){
   const name=v('mi-name'),type=v('mi-type'),qty=num('mi-qty'),unitTZS=num('mi-price');
   const taxAmt=num('mi-tax'),taxCur=v('mi-taxcur'),salePrice=num('mi-sale');
   if(!name||!qty||!unitTZS)return toast('Fill in name, quantity and unit price.',1);
+  // resolve the batch from the date (the batch identity)
+  if(!itemBatchId&&!itemEditId){
+    const date=v('mi-date'),origin=v('mi-origin');
+    if(!date)return toast('Choose the date you bought it.',1);
+    let b=findBatchByDate(date,origin);
+    if(b)itemBatchId=b.id;
+    else{
+      const ref=await db.collection('batches').add({name:autoBatchName(origin,date),date,origin,expenses:[],createdAt:Date.now(),by:U.name});
+      itemBatchId=ref.id;
+    }
+  }
   if(itemEditId){
     const sold=soldQty(itemEditId);
     if(qty<sold)return toast(`You already sold ${sold} of this item — quantity can't be less.`,1);
@@ -840,7 +897,7 @@ async function delItem(id){
 
 function renderBatches(){
   const wrap=document.getElementById('batch-list');
-  if(!D.batches.length){wrap.innerHTML='<div class="empty"><div class="big">🧳</div>No trips yet. Create your first Tanzania trip above.</div>';return;}
+  if(!D.batches.length){wrap.innerHTML='<div class="empty"><div class="big">🧳</div>No batches yet. Tap “＋ Add clothes bought” — the date you choose creates the batch automatically.</div>';return;}
   wrap.innerHTML=D.batches.map(b=>{
     const items=batchItems(b),units=batchUnits(b),expR=batchExpRWF(b),share=batchShare(b);
     const goods=batchGoodsRWF(b),total=goods+expR;
@@ -848,7 +905,7 @@ function renderBatches(){
     const open=!!openBatches[b.id];
     const expHtml=(b.expenses||[]).map(e=>`
       <div class="exp-line"><span class="grow">${esc(e.label)}</span>
-        <b>${fmt(e.amount)} ${e.cur}</b>${e.cur==='TZS'?`<span class="mini-note">= ${fmt(tz2rw(e.amount,b.rate))} RWF</span>`:''}
+        <b>${fmt(e.amount)} RWF</b>
         ${isOwner()?`<button class="btn btn-d sm" onclick="event.stopPropagation();delBatchExp('${b.id}',${e.id})">×</button>`:''}
       </div>`).join('')||'<p class="mini-note" style="padding:6px 0">No trip expenses yet.</p>';
     const itemsHtml=items.map(i=>{
@@ -856,8 +913,8 @@ function renderBatches(){
       return `<tr>
         <td><b>${esc(i.name)}</b><div class="mini-note">${esc(i.type)}</div></td>
         <td class="num">${fmt(i.qty)}</td>
-        <td class="num">${fmt(i.unitTZS)} <span class="mini-note">TZS</span></td>
-        <td class="num">${fmt(i.taxAmt||0)} <span class="mini-note">${i.taxCur||'TZS'}</span></td>
+        <td class="num">${fmt(i.unitTZS)} <span class="mini-note">RWF</span></td>
+        <td class="num">${fmt(i.taxAmt||0)}</td>
         <td class="num money">${fmt(cost)}</td>
         <td class="num">${i.salePrice?fmt(i.salePrice):'—'}</td>
         <td class="num">${rem>0?`<span class="pill pill-ok">${fmt(rem)} left</span>`:'<span class="pill pill-mut">sold out</span>'}</td>
@@ -866,8 +923,8 @@ function renderBatches(){
     return `<div class="batch-card ${open?'open':''}">
       <div class="batch-head" onclick="toggleBatch('${b.id}')">
         <div>
-          <div class="bh-name">${esc(b.name)}</div>
-          <div class="bh-sub">${fmtD(b.date)} · 1,000 TZS = ${fmt(b.rate)} RWF · ${fmt(units)} pieces (${fmt(sold)} sold)</div>
+          <div class="bh-name">${esc(b.name)} <span class="pill ${bOrigin(b)==='China'?'pill-mut':'pill-gold'}">${esc(bOrigin(b))}</span></div>
+          <div class="bh-sub">${fmtD(b.date)} · ${fmt(units)} pieces (${fmt(sold)} sold)</div>
         </div>
         <span class="chev">▼</span>
       </div>
@@ -882,7 +939,7 @@ function renderBatches(){
         ${expHtml}
         <button class="btn btn-s sm" style="margin:8px 0 14px" onclick="openBexp('${b.id}')">＋ Add trip expense</button>
         <h3 style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--ink2);margin:0 0 6px">Clothes bought</h3>
-        <div class="tblwrap"><table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Tax/pc</th><th class="num">Cost/pc (RWF)</th><th class="num">Target</th><th class="num">Stock</th><th></th></tr></thead><tbody>${itemsHtml||'<tr><td colspan="8" class="empty">No clothes added yet.</td></tr>'}</tbody></table></div>
+        <div class="tblwrap"><table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit price (RWF)</th><th class="num">Tax/pc (RWF)</th><th class="num">Cost/pc (RWF)</th><th class="num">Target</th><th class="num">Stock</th><th></th></tr></thead><tbody>${itemsHtml||'<tr><td colspan="8" class="empty">No clothes added yet.</td></tr>'}</tbody></table></div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-gold sm" onclick="openItemModal('${b.id}')">＋ Add clothes</button>
           <button class="btn btn-s sm" onclick="openBatchModal('${b.id}')">Edit trip</button>
@@ -1159,13 +1216,11 @@ function renderSettings(){
   document.getElementById('cats-chips').innerHTML=allCats().map(c=>{
     const custom=(D.settings.cats||[]).includes(c);
     return `<span class="chip">${esc(c)}${custom?`<span class="x" onclick="rmCat('${esc(c)}')">×</span>`:''}</span>`;}).join('');
-  document.getElementById('set-rate').value=D.settings.rate||'';
 }
 async function addType(){const t=v('new-type');if(!t)return;D.settings.types=[...new Set([...(D.settings.types||[]),t])];document.getElementById('new-type').value='';await saveSettings();renderSettings();toast('Type added ✓');}
 async function rmType(t){D.settings.types=(D.settings.types||[]).filter(x=>x!==t);await saveSettings();renderSettings();}
 async function addCat(){const c=v('new-cat');if(!c)return;D.settings.cats=[...new Set([...(D.settings.cats||[]),c])];document.getElementById('new-cat').value='';await saveSettings();renderSettings();toast('Category added ✓');}
 async function rmCat(c){D.settings.cats=(D.settings.cats||[]).filter(x=>x!==c);await saveSettings();renderSettings();}
-async function saveRate(){const r=num('set-rate');if(!r)return toast('Enter the rate.',1);D.settings.rate=r;await saveSettings();toast('Rate saved ✓');}
 
 /* ---------- BOOT ---------- */
 (function boot(){
