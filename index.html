@@ -398,11 +398,11 @@ canvas{max-width:100%}
       </div>
       <div class="card">
         <h3>Sales in period</h3>
-        <div class="tblwrap"><table><thead><tr><th>Date</th><th>Item</th><th>By</th><th class="num">Qty</th><th class="num">Total</th><th class="num">Profit</th></tr></thead><tbody id="rp-sales"></tbody></table></div>
+        <div class="tblwrap"><table><thead><tr><th>Date</th><th>Item</th><th>By</th><th class="num">Qty</th><th class="num">Total</th><th class="num">Profit</th><th></th></tr></thead><tbody id="rp-sales"></tbody></table></div>
       </div>
       <div class="card">
         <h3>Expenses in period</h3>
-        <div class="tblwrap"><table><thead><tr><th>Date</th><th>Category</th><th>Note</th><th class="num">Amount</th></tr></thead><tbody id="rp-exps"></tbody></table></div>
+        <div class="tblwrap"><table><thead><tr><th>Date</th><th>Category</th><th>Note</th><th class="num">Amount</th><th></th></tr></thead><tbody id="rp-exps"></tbody></table></div>
       </div>
     </div>
 
@@ -602,6 +602,16 @@ function saveConfig(){
 function reconfigure(){if(confirm('Disconnect this device? Your data stays safe in the cloud; you will need to re-enter the Firebase config.')){localStorage.removeItem('yh_cfg');location.reload();}}
 
 function initFB(cfg){
+  if(typeof firebase==='undefined'){
+    show('screen-setup');
+    showErr('setup-err','Could not load the connection library — check your internet (or turn off data-saver / ad-blocker) and tap Retry.');
+    const box=document.querySelector('#screen-setup .setup-box');
+    if(!document.getElementById('retry-btn')){
+      const b=document.createElement('button');b.id='retry-btn';b.className='btn btn-gold btn-block';b.style.marginTop='10px';b.textContent='↻ Retry';b.onclick=()=>location.reload();
+      box.insertBefore(b,box.children[2]);
+    }
+    return;
+  }
   try{
     app=firebase.apps.length?firebase.apps[0]:firebase.initializeApp(cfg);
     db=firebase.firestore();
@@ -1203,9 +1213,9 @@ function renderReports(){
   document.getElementById('rp-types').innerHTML=Object.keys(byT).sort((a,b)=>byT[b].p-byT[a].p).map(k=>`
     <tr><td><b>${esc(k)}</b></td><td class="num">${fmt(byT[k].q)}</td><td class="num">${fmt(byT[k].r)}</td><td class="num">${fmt(byT[k].c)}</td><td class="num money ${byT[k].p>=0?'pos':'neg'}">${fmt(byT[k].p)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No sales in this period.</td></tr>';
   document.getElementById('rp-sales').innerHTML=sales.map(s=>`
-    <tr><td>${fmtD(s.date)}</td><td><b>${esc(s.itemName)}</b><div class="mini-note">${esc(s.method||'')}${s.note?' · '+esc(s.note):''}</div></td><td class="mini-note">${esc(s.by||'')}</td><td class="num">${fmt(s.qty)}</td><td class="num money">${fmt(s.total)}</td><td class="num ${s.profit>=0?'pos':'neg'}">${fmt(s.profit)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">No sales.</td></tr>';
+    <tr><td>${fmtD(s.date)}</td><td><b>${esc(s.itemName)}</b><div class="mini-note">${esc(s.method||'')}${s.note?' · '+esc(s.note):''}</div></td><td class="mini-note">${esc(s.by||'')}</td><td class="num">${fmt(s.qty)}</td><td class="num money">${fmt(s.total)}</td><td class="num ${s.profit>=0?'pos':'neg'}">${fmt(s.profit)}</td><td>${isOwner()?`<button class="btn btn-d sm" onclick="delSale('${s.id}')">×</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No sales.</td></tr>';
   document.getElementById('rp-exps').innerHTML=exps.map(e=>`
-    <tr><td>${fmtD(e.date)}</td><td>${esc(e.cat)}</td><td class="mini-note">${esc(e.note||'')}</td><td class="num money neg">${fmt(e.amount)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">No expenses.</td></tr>';
+    <tr><td>${fmtD(e.date)}</td><td>${esc(e.cat)}</td><td class="mini-note">${esc(e.note||'')}</td><td class="num money neg">${fmt(e.amount)}</td><td>${isOwner()?`<button class="btn btn-d sm" onclick="delExpense('${e.id}')">×</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No expenses.</td></tr>';
 }
 function exportXlsx(){
   const from=v('rp-from')||'0000',to=v('rp-to')||'9999';
@@ -1265,10 +1275,12 @@ async function addCat(){const c=v('new-cat');if(!c)return;D.settings.cats=[...ne
 async function rmCat(c){D.settings.cats=(D.settings.cats||[]).filter(x=>x!==c);await saveSettings();renderSettings();}
 
 /* ---------- BOOT ---------- */
-(function boot(){
+function boot(){
   const saved=YH_CFG||JSON.parse(localStorage.getItem('yh_cfg')||'null');
   if(saved)initFB(saved);else show('screen-setup');
-})();
+}
+if(document.readyState==='complete')boot();
+else window.addEventListener('load',boot);
 </script>
 </body>
 </html>
