@@ -805,14 +805,43 @@ async function mergeBatches(fromId,intoId){
   batchWrites.update(db.collection('batches').doc(intoId),{expenses});
   batchWrites.delete(db.collection('batches').doc(fromId));
   await batchWrites.commit();
+  await recalcBatchSales(intoId);
 }
 function findBatchByDate(date,origin){return D.batches.find(b=>b.date===date&&bOrigin(b)===origin);}
+// Recalculate the stored cost & profit of every sale in a batch, using fresh data.
+async function recalcBatchSales(batchId){
+  try{
+    const bDoc=await db.collection('batches').doc(batchId).get();
+    if(!bDoc.exists)return;
+    const b={id:batchId,...bDoc.data()};
+    const itemsSnap=await db.collection('items').where('batchId','==',batchId).get();
+    const items=itemsSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const units=items.reduce((s,i)=>s+(Number(i.qty)||0),0);
+    const expR=(b.expenses||[]).reduce((s,e)=>s+(Number(e.amount)||0),0);
+    const share=units>0?expR/units:0;
+    const costOf={};
+    items.forEach(i=>{costOf[i.id]=(Number(i.unitTZS)||0)+(Number(i.taxAmt)||0)+share;});
+    const salesSnap=await db.collection('sales').where('batchId','==',batchId).get();
+    if(salesSnap.empty)return 0;
+    const bw=db.batch();let n=0;
+    salesSnap.docs.forEach(d=>{
+      const s=d.data();
+      const cost=costOf[s.itemId];
+      if(cost==null)return;
+      const profit=((Number(s.price)||0)-cost)*(Number(s.qty)||0);
+      if(Math.abs((s.cost||0)-cost)>0.005||Math.abs((s.profit||0)-profit)>0.005){bw.update(d.ref,{cost,profit});n++;}
+    });
+    if(n)await bw.commit();
+    return n;
+  }catch(e){console.warn('recalc',e);}
+}
 async function delBatch(id){
   if(!isOwner())return;
   if(batchItems({id}).length)return toast('Delete the items in this trip first.',1);
   if(confirm('Delete this trip?')){await db.collection('batches').doc(id).delete();toast('Deleted');}
 }
 function toggleBatch(id){openBatches[id]=!openBatches[id];renderBatches();}
+async function manualRecalc(id){const n=await recalcBatchSales(id);toast(n?`✓ ${n} sale(s) updated with the new costs`:'✓ Profits already up to date');}
 
 function openBexp(batchId){
   bexpBatchId=batchId||null;
@@ -831,12 +860,14 @@ async function saveBatchExp(){
   const b=getBatch(bexpBatchId||v('be-batch'));if(!b)return;
   const expenses=[...(b.expenses||[]),{label,amount,cur,id:Date.now()}];
   await db.collection('batches').doc(b.id).update({expenses});
-  closeModal('m-bexp');toast('Expense added ✓');
+  closeModal('m-bexp');toast('Expense added ✓ — costs & sold profits updated');
+  recalcBatchSales(b.id);
 }
 async function delBatchExp(batchId,eid){
   const b=getBatch(batchId);if(!b)return;
   const expenses=(b.expenses||[]).filter(e=>e.id!==eid);
   await db.collection('batches').doc(batchId).update({expenses});
+  recalcBatchSales(batchId);
 }
 
 function miBatchSync(){
@@ -933,18 +964,20 @@ async function saveItem(){
       const oldB=getBatch(cur.batchId);
       if(oldB&&!D.items.some(i=>i.batchId===oldB.id&&i.id!==itemEditId)&&!(oldB.expenses||[]).length){
         await db.collection('batches').doc(oldB.id).delete();
-      }
+      }else if(oldB){recalcBatchSales(oldB.id);}
+      recalcBatchSales(itemBatchId);
       closeModal('m-item');toast('Item moved to its correct batch ✓');return;
     }
   }else{
     await db.collection('items').add({batchId:itemBatchId,name,type,qty,unitTZS,taxAmt,taxCur,salePrice,createdAt:Date.now(),by:U.name});
   }
   closeModal('m-item');toast('Item saved ✓');
+  recalcBatchSales(itemBatchId);
 }
 async function delItem(id){
   if(!isOwner())return;
   if(soldQty(id)>0)return toast('This item has sales — it can\'t be deleted.',1);
-  if(confirm('Delete this item?')){await db.collection('items').doc(id).delete();toast('Deleted');}
+  if(confirm('Delete this item?')){const it=getItem(id);await db.collection('items').doc(id).delete();toast('Deleted');if(it)recalcBatchSales(it.batchId);}
 }
 
 function renderBatches(){
@@ -986,6 +1019,9 @@ function renderBatches(){
           <div class="tt-row"><span>Trip expenses (transport, food, cargo…)</span><b>${fmt(expR)} RWF</b></div>
           <div class="tt-row"><span>Expense share per piece <span class="mini-note">(${fmt(expR)} ÷ ${fmt(units)} pieces)</span></span><b>${fmt1(share)} RWF</b></div>
           <div class="tt-total"><span>Total invested in this trip</span><span>${fmt(total)} RWF</span></div>
+          ${can('costs')?(()=>{const bs=D.sales.filter(s=>s.batchId===b.id);const rev=bs.reduce((s,x)=>s+(x.total||0),0);const pf=bs.reduce((s,x)=>s+(x.profit||0),0);return `
+          <div class="tt-row" style="margin-top:6px"><span>Sold so far from this batch</span><b>${fmt(rev)} RWF</b></div>
+          <div class="tt-row"><span>Profit made so far</span><b class="${pf>=0?'pos':'neg'}">${pf>=0?'+':''}${fmt(pf)} RWF</b></div>`})():''}
         </div>
         <h3 style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--ink2);margin:12px 0 6px">Trip expenses</h3>
         ${expHtml}
@@ -994,7 +1030,8 @@ function renderBatches(){
         <div class="tblwrap"><table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit price (RWF)</th><th class="num">Tax/pc (RWF)</th><th class="num">Cost/pc (RWF)</th><th class="num">Target</th><th class="num">Stock</th><th></th></tr></thead><tbody>${itemsHtml||'<tr><td colspan="8" class="empty">No clothes added yet.</td></tr>'}</tbody></table></div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-gold sm" onclick="openItemModal('${b.id}')">＋ Add clothes</button>
-          <button class="btn btn-s sm" onclick="openBatchModal('${b.id}')">Edit trip</button>
+          <button class="btn btn-s sm" onclick="openBatchModal('${b.id}')">Edit batch</button>
+          ${isOwner()?`<button class="btn btn-s sm" onclick="manualRecalc('${b.id}')">↻ Update profits</button>`:''}
           ${isOwner()?`<button class="btn btn-d sm" onclick="delBatch('${b.id}')">Delete trip</button>`:''}
         </div>
       </div>
