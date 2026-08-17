@@ -142,6 +142,12 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .tag-ticket .tt-row b{font-variant-numeric:tabular-nums;color:var(--ink)}
 .tag-ticket .tt-total{border-top:1.5px solid var(--gold);margin-top:6px;padding-top:7px;font-weight:800;font-size:14px;color:var(--gold-d);display:flex;justify-content:space-between}
 
+/* break-even bar */
+.be-bar{height:12px;border-radius:99px;background:#e8e0d2;overflow:hidden;margin:8px 0 4px;position:relative}
+.be-fill{height:100%;background:linear-gradient(90deg,#c8a95d,#a4823c);border-radius:99px;transition:width .4s}
+.be-fill.over{background:linear-gradient(90deg,#3f9d6b,#2e7d4f)}
+.be-lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);font-weight:700}
+
 /* batch cards */
 .batch-card{border:1px solid var(--line);border-radius:var(--rd);background:var(--card);box-shadow:var(--sh);margin-bottom:12px;overflow:hidden}
 .batch-head{padding:13px 15px;display:flex;align-items:center;gap:10px;cursor:pointer;background:linear-gradient(180deg,#fffdf9,#faf6ee)}
@@ -1021,7 +1027,15 @@ function renderBatches(){
           <div class="tt-total"><span>Total invested in this trip</span><span>${fmt(total)} RWF</span></div>
           ${can('costs')?(()=>{const bs=D.sales.filter(s=>s.batchId===b.id);const rev=bs.reduce((s,x)=>s+(x.total||0),0);const pf=bs.reduce((s,x)=>s+(x.profit||0),0);return `
           <div class="tt-row" style="margin-top:6px"><span>Sold so far from this batch</span><b>${fmt(rev)} RWF</b></div>
-          <div class="tt-row"><span>Profit made so far</span><b class="${pf>=0?'pos':'neg'}">${pf>=0?'+':''}${fmt(pf)} RWF</b></div>`})():''}
+          <div class="tt-row"><span>Profit made so far</span><b class="${pf>=0?'pos':'neg'}">${pf>=0?'+':''}${fmt(pf)} RWF</b></div>
+          ${(()=>{const pct=total>0?Math.min(100,rev/total*100):0;const over=rev>=total&&total>0;
+            return `
+          <div class="be-bar"><div class="be-fill ${over?'over':''}" style="width:${pct.toFixed(1)}%"></div></div>
+          <div class="be-lbl"><span>Money back: ${fmt(rev)} / ${fmt(total)} RWF (${pct.toFixed(0)}%)</span><span>${over?'BROKE EVEN ✓':'to break even'}</span></div>
+          ${over
+            ?`<div class="tt-row" style="margin-top:5px"><span>🎉 Made after break-even (pure gain)</span><b class="pos">+${fmt(rev-total)} RWF</b></div>`
+            :`<div class="tt-row" style="margin-top:5px"><span>Remaining to break even</span><b class="neg">${fmt(total-rev)} RWF</b></div>`}
+          `})()}`})():''}
         </div>
         <h3 style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--ink2);margin:12px 0 6px">Trip expenses</h3>
         ${expHtml}
