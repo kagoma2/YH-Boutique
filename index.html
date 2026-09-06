@@ -330,8 +330,11 @@ canvas{max-width:100%}
       <div class="ptitle serif">Sell</div>
       <div class="psub">Tap an item, enter quantity and the price the customer pays.</div>
       <div class="card">
-        <input class="search-in" id="sell-q" placeholder="Search item… (name or type)" oninput="renderSellList()">
-        <div id="sell-list" style="margin-top:8px"></div>
+        <div class="filters" style="margin-bottom:10px">
+          <div class="fl" style="flex:2"><label>Search item</label><input class="search-in" id="sell-q" placeholder="Name or type…" oninput="renderSellList()" style="border-radius:10px;padding:10px 12px;font-size:14px"></div>
+          <div class="fl"><label>Filter by trip / batch</label><select id="sell-batch" onchange="renderSellList()"><option value="">All trips</option></select></div>
+        </div>
+        <div id="sell-list"></div>
       </div>
       <div class="card">
         <h3>Today's sales <span class="grow"></span><span class="pill pill-ok" id="sell-today-total"></span></h3>
@@ -715,7 +718,7 @@ function switchPanel(name){
   document.querySelectorAll('.atab').forEach(t=>t.classList.toggle('on',t.dataset.p===name));
   document.getElementById('p-'+name).classList.add('on');
   if(name==='dashboard')renderDash();
-  if(name==='sell'){renderSellList();renderTodaySales();}
+  if(name==='sell'){populateSellBatchFilter();renderSellList();renderTodaySales();}
   if(name==='stock')renderStock();
   if(name==='batches')renderBatches();
   if(name==='expenses'){populateCats();renderExpenses();}
@@ -751,7 +754,7 @@ function refreshAll(){
   const on=document.querySelector('.panel.on');if(!on)return;
   const name=on.id.replace('p-','');
   if(name==='dashboard')renderDash();
-  if(name==='sell'){renderSellList();renderTodaySales();}
+  if(name==='sell'){populateSellBatchFilter();renderSellList();renderTodaySales();}
   if(name==='stock')renderStock();
   if(name==='batches')renderBatches();
   if(name==='expenses'){populateCats();renderExpenses();}
@@ -1057,16 +1060,26 @@ function renderBatches(){
 function stockList(){
   return D.items.map(i=>({...i,rem:remaining(i),cost:landedCost(i)}));
 }
+function populateSellBatchFilter(){
+  const sel=document.getElementById('sell-batch');if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">All trips</option>'+D.batches.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('');
+  if(cur)sel.value=cur;
+}
 function renderSellList(){
+  populateSellBatchFilter();
   const q=v('sell-q').toLowerCase();
-  const list=stockList().filter(i=>i.rem>0&&(!q||i.name.toLowerCase().includes(q)||(i.type||'').toLowerCase().includes(q)));
+  const bId=v('sell-batch');
+  const list=stockList().filter(i=>i.rem>0
+    &&(!q||i.name.toLowerCase().includes(q)||(i.type||'').toLowerCase().includes(q))
+    &&(!bId||i.batchId===bId));
   const el=document.getElementById('sell-list');
   if(!list.length){el.innerHTML='<div class="empty"><div class="big">🪡</div>Nothing in stock matches. Items come in via Tanzania Trips.</div>';return;}
   el.innerHTML=list.slice(0,40).map(i=>`
     <div class="item-pick" onclick="openSale('${i.id}')">
       <div>
         <div class="ip-name">${esc(i.name)}</div>
-        <div class="ip-sub">${esc(i.type)} · ${esc((getBatch(i.batchId)||{}).name||'')}</div>
+        <div class="ip-sub">${esc(i.type)} <span style="color:var(--gold-d);font-weight:700">· ${esc((getBatch(i.batchId)||{}).name||'')}</span></div>
       </div>
       <div class="ip-right">
         <div class="money">${i.salePrice?fmt(i.salePrice)+' RWF':''}</div>
